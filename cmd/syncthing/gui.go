@@ -81,11 +81,18 @@ func startGUI(cfg config.GUIConfiguration, assetDir string, m *model.Model) erro
 		ServerName:   "syncthing",
 	}
 
+	fin := func(obj interface{}) {
+		l.Warnf("%#v garbage collected", obj)
+	}
+
 	rawListener, err := net.Listen("tcp", cfg.Address)
 	if err != nil {
 		return err
 	}
 	listener := &DowngradingListener{rawListener, tlsCfg}
+	runtime.SetFinalizer(rawListener, fin)
+	runtime.SetFinalizer(listener, fin)
+
 
 	// The GET handlers
 	getRestMux := http.NewServeMux()
@@ -166,12 +173,14 @@ func startGUI(cfg config.GUIConfiguration, assetDir string, m *model.Model) erro
 		if err != nil {
 			panic(err)
 		}
+		panic("Stopped listening for no good reason")
 	}()
 	return nil
 }
 
 func getPostHandler(get, post http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		l.Debugln("@getPostHandler", r.Method)
 		switch r.Method {
 		case "GET":
 			get.ServeHTTP(w, r)
@@ -185,6 +194,7 @@ func getPostHandler(get, post http.Handler) http.Handler {
 
 func redirectToHTTPSMiddleware(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		l.Debugln("@redirectToHTTPSMiddleware")
 		// Add a generous access-control-allow-origin header since we may be
 		// redirecting REST requests over protocols
 		w.Header().Add("Access-Control-Allow-Origin", "*")
@@ -193,6 +203,7 @@ func redirectToHTTPSMiddleware(h http.Handler) http.Handler {
 			// Redirect HTTP requests to HTTPS
 			r.URL.Host = r.Host
 			r.URL.Scheme = "https"
+			l.Debugln("@redirectToHTTPSMiddleware Redirecting")
 			http.Redirect(w, r, r.URL.String(), http.StatusFound)
 		} else {
 			h.ServeHTTP(w, r)
@@ -202,6 +213,7 @@ func redirectToHTTPSMiddleware(h http.Handler) http.Handler {
 
 func noCacheMiddleware(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		l.Debugln("@noCacheMiddleware")
 		w.Header().Set("Cache-Control", "no-cache")
 		h.ServeHTTP(w, r)
 	})
@@ -209,6 +221,7 @@ func noCacheMiddleware(h http.Handler) http.Handler {
 
 func withVersionMiddleware(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		l.Debugln("@withVersionMiddleware")
 		w.Header().Set("X-Syncthing-Version", Version)
 		h.ServeHTTP(w, r)
 	})
@@ -686,6 +699,7 @@ func embeddedStatic(assetDir string) http.Handler {
 	assets := auto.Assets()
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		l.Debugln("@embeddedStatic")
 		file := r.URL.Path
 
 		if file[0] == '/' {
@@ -701,6 +715,7 @@ func embeddedStatic(assetDir string) http.Handler {
 			_, err := os.Stat(p)
 			if err == nil {
 				http.ServeFile(w, r, p)
+				l.Debugln("@embeddedStatic return 1")
 				return
 			}
 		}
@@ -708,6 +723,7 @@ func embeddedStatic(assetDir string) http.Handler {
 		bs, ok := assets[file]
 		if !ok {
 			http.NotFound(w, r)
+			l.Debugln("@embeddedStatic return 2")
 			return
 		}
 
@@ -719,6 +735,7 @@ func embeddedStatic(assetDir string) http.Handler {
 		w.Header().Set("Last-Modified", modt)
 
 		w.Write(bs)
+		l.Debugln("@embeddedStatic return 3")
 	})
 }
 

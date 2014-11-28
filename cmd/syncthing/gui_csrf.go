@@ -39,6 +39,7 @@ var csrfMut sync.Mutex
 func csrfMiddleware(prefix, apiKey string, next http.Handler) http.Handler {
 	loadCsrfTokens()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		l.Debugln("@csrfMiddleware")
 		// Allow requests carrying a valid API key
 		if apiKey != "" && r.Header.Get("X-API-Key") == apiKey {
 			next.ServeHTTP(w, r)

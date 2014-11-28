@@ -118,8 +118,9 @@ type WrappedConnection struct {
 	net.Conn
 }
 
-func (l *DowngradingListener) Accept() (net.Conn, error) {
-	conn, err := l.Listener.Accept()
+func (li *DowngradingListener) Accept() (net.Conn, error) {
+	conn, err := li.Listener.Accept()
+	l.Debugln("Accepted connection", conn, err)
 	if err != nil {
 		return nil, err
 	}
@@ -127,6 +128,7 @@ func (l *DowngradingListener) Accept() (net.Conn, error) {
 	br := bufio.NewReader(conn)
 	bs, err := br.Peek(1)
 	if err != nil {
+		l.Debugln("Got error while peeking", err)
 		// We hit a read error here, but the Accept() call succeeded so we must not return an error.
 		// We return the connection as is and let whoever tries to use it deal with the error.
 		return conn, nil
@@ -136,9 +138,9 @@ func (l *DowngradingListener) Accept() (net.Conn, error) {
 
 	// 0x16 is the first byte of a TLS handshake
 	if bs[0] == 0x16 {
-		return tls.Server(wrapper, l.TLSConfig), nil
+		return tls.Server(wrapper, li.TLSConfig), nil
 	}
-
+	l.Debugln("Returning wrapped connection")
 	return wrapper, nil
 }
 
